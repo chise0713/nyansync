@@ -54,60 +54,72 @@ impl Accept {
 
                 let mut resp_bytes = vec![0; Response::TOTAL_LEN];
                 let Some(path) = set.iter().nth(cursor as usize) else {
-                    let resp = Response::new(
-                        FileType::EndOfTransition,
-                        [0u8; 20],
-                        Resolution::new(0, 0),
-                        0,
-                    );
-                    if resp.encode(&mut resp_bytes).is_err() {
-                        return;
-                    };
-                    _ = stream.write_all(&resp_bytes).await;
+                    _ = stream
+                        .write_all(&[FileType::EndOfTransition.as_byte()])
+                        .await;
                     return;
                 };
 
                 let file_name = path.file_name().unwrap();
                 let file_name = file_name.to_string_lossy();
 
+                let not_valid = async {
+                    _ = stream.write_all(&[FileType::NotValid.as_byte()]).await;
+                };
+
                 let mut split = file_name.split('-');
                 let Some(hex) = split.next() else {
-                    eprintln!("file name: hex");
+                    eprintln!("file name: no hex");
+                    not_valid.await;
                     return;
                 };
                 let Some(file_size) = split.next() else {
-                    eprintln!("file name: file_size");
+                    eprintln!("file name: no file_size");
+                    not_valid.await;
                     return;
                 };
                 let Some(x) = split.next() else {
-                    eprintln!("file name: res_x");
+                    eprintln!("file name: no res_x");
+                    not_valid.await;
                     return;
                 };
                 let Some(y) = split.next() else {
-                    eprintln!("file name: res_y");
+                    eprintln!("file name: no res_y");
+                    not_valid.await;
                     return;
                 };
                 let Some(typ) = split.next() else {
-                    eprintln!("file name: typ");
+                    eprintln!("file name: no typ");
+                    not_valid.await;
                     return;
                 };
 
+                if split.next().is_some() {
+                    eprintln!("file name field exceed 5");
+                    not_valid.await;
+                    return;
+                }
+
                 let Ok(hex) = hex.as_bytes().try_into() else {
                     eprintln!("hex length not equals to 40");
+                    not_valid.await;
                     return;
                 };
 
                 let hash = nyansync::hex::hex_to_bytes(&hex);
                 let Ok(file_size) = file_size.parse() else {
                     eprintln!("file_size not a valid u32");
+                    not_valid.await;
                     return;
                 };
                 let Ok(x) = x.parse() else {
                     eprintln!("res_x not a valid u32");
+                    not_valid.await;
                     return;
                 };
                 let Ok(y) = y.parse() else {
                     eprintln!("res_y not a valid u32");
+                    not_valid.await;
                     return;
                 };
                 let typ = match typ {
@@ -117,6 +129,7 @@ impl Accept {
                     "png" => FileType::Png,
                     _ => {
                         eprintln!("unknown typ: {typ}");
+                        not_valid.await;
                         return;
                     }
                 };

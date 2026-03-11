@@ -34,6 +34,8 @@ pub enum FileType {
     Jpg,
     Webp,
     Png,
+    // also commands i guess
+    NotValid = 254,
     EndOfTransition = 255,
 }
 
@@ -52,6 +54,7 @@ impl TryFrom<u8> for FileType {
             1 => Ok(FileType::Jpg),
             2 => Ok(FileType::Webp),
             3 => Ok(FileType::Png),
+            254 => Ok(FileType::NotValid),
             255 => Ok(FileType::EndOfTransition),
             _ => Err(Error::new(ErrorKind::InvalidData, "invalid file type")),
         }
@@ -68,6 +71,7 @@ impl Display for FileType {
                 Self::Jpg => "jpg",
                 Self::Webp => "wbp",
                 Self::Png => "png",
+                Self::NotValid => "ivl",
                 Self::EndOfTransition => "eot",
             }
         )
@@ -173,7 +177,8 @@ impl Response {
     }
 
     pub fn decode(buf: &[u8]) -> io::Result<Option<(Self, usize)>> {
-        if buf.len() < Self::TOTAL_LEN {
+        // len is 0
+        if buf.is_empty() {
             return Ok(None);
         }
 
@@ -182,6 +187,17 @@ impl Response {
         // file_type
         let file_type = FileType::try_from(buf[n])?;
         n += Self::FILE_TYPE_LEN;
+
+        if matches!(file_type, FileType::NotValid | FileType::EndOfTransition) {
+            return Ok(Some((
+                Self::new(file_type, [0; _], Resolution::new(0, 0), 0),
+                1,
+            )));
+        }
+
+        if buf.len() < Self::TOTAL_LEN {
+            return Ok(None);
+        }
 
         // file_hash
         let Ok(file_hash) = buf[n..n + Self::FILE_HASH_LEN].try_into() else {
