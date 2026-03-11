@@ -4,7 +4,12 @@ mod args;
 use std::{collections::BTreeSet, num::NonZero, path::Path, process::ExitCode, sync::Arc, thread};
 
 use anyhow::Result;
-use tokio::{net::TcpListener, runtime::Runtime, sync::Semaphore, task::JoinSet};
+use tokio::{
+    net::TcpListener,
+    runtime::Runtime,
+    sync::{Semaphore, broadcast},
+    task::JoinSet,
+};
 use walkdir::WalkDir;
 
 use crate::{
@@ -74,11 +79,18 @@ impl AsyncMain {
         let ln = Arc::new(TcpListener::from_std(self.listen)?);
         let semaphore = Arc::new(Semaphore::new(self.worker_threads + 1));
         let set = Arc::new(self.set);
+        let (tx, rx) = broadcast::channel(self.worker_threads + 1);
 
         let mut join_set = JoinSet::new();
 
         (0..self.worker_threads).for_each(|_| {
-            _ = join_set.spawn(Accept::accept(ln.clone(), set.clone(), semaphore.clone()))
+            _ = join_set.spawn(Accept::accept(
+                ln.clone(),
+                set.clone(),
+                semaphore.clone(),
+                tx.clone(),
+                tx.subscribe(),
+            ))
         });
 
         let exit_code = ExitCode::FAILURE;
@@ -87,7 +99,7 @@ impl AsyncMain {
             _ = join_set.join_next() => {
 
             },
-            _ = Accept::accept(ln, set, semaphore) => {
+            _ = Accept::accept(ln, set, semaphore, tx, rx) => {
 
             }
         }

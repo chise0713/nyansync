@@ -5,7 +5,10 @@ use tokio::{
     fs::File,
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::TcpListener,
-    sync::Semaphore,
+    sync::{
+        Semaphore,
+        broadcast::{Receiver, Sender},
+    },
 };
 
 pub struct Accept;
@@ -15,9 +18,19 @@ impl Accept {
         ln: Arc<TcpListener>,
         set: Arc<BTreeSet<Box<Path>>>,
         semaphore: Arc<Semaphore>,
+        tx: Sender<()>,
+        mut rx: Receiver<()>,
     ) {
         loop {
-            let (mut stream, addr) = match ln.accept().await {
+            let conn = tokio::select! {
+                conn = ln.accept() => {
+                    conn
+                },
+                _ = rx.recv() => {
+                    return;
+                }
+            };
+            let (mut stream, addr) = match conn {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("accept error: {e}");
@@ -35,6 +48,7 @@ impl Accept {
                 }
             };
 
+            let tx = tx.clone();
             let set = set.clone();
 
             tokio::spawn(async move {
@@ -57,6 +71,7 @@ impl Accept {
                     _ = stream
                         .write_all(&[FileType::EndOfTransition.as_byte()])
                         .await;
+                    _ = tx.send(());
                     return;
                 };
 
