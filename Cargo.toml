@@ -1,0 +1,27 @@
+[package]
+name = "nyansync"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "nyansync"
+path = "src/bin/client/main.rs"
+
+[[bin]]
+name = "nyansync-server"
+path = "src/bin/server/main.rs"
+
+[dependencies]
+anyhow = "^1"
+supershorty = "^0.2.4"
+tokio = { version = "^1", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "net",
+    "parking_lot",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+] }
+walkdir = "^2"
