@@ -1,6 +1,6 @@
-use std::{collections::BTreeSet, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use nyansync::{FileType, Request, Resolution, Response};
+use nyansync::{ExtCommand, Request, Response, ResponseHeader};
 use tokio::{
     fs::File,
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -13,7 +13,7 @@ pub struct Accept;
 impl Accept {
     pub async fn accept(
         ln: Arc<TcpListener>,
-        set: Arc<BTreeSet<Box<Path>>>,
+        set: Arc<Box<[Box<Path>]>>,
         notify_shutdown: Sender<()>,
         mut shutdown: Receiver<()>,
     ) {
@@ -42,8 +42,9 @@ impl Accept {
         }
     }
 
-    pub async fn stream_handle(mut stream: TcpStream, set: Arc<BTreeSet<Box<Path>>>) {
+    pub async fn stream_handle(mut stream: TcpStream, files: Arc<Box<[Box<Path>]>>) {
         let mut buf = 0u32.to_be_bytes();
+        let resp_bytes: &mut [u8] = &mut [0; ResponseHeader::TOTAL_LEN];
 
         loop {
             match stream.read_exact(buf.as_mut_slice()).await {
@@ -58,13 +59,16 @@ impl Accept {
 
             let cursor = req.cursor();
 
-            let resp_bytes: &mut [u8] = &mut [0; Response::TOTAL_LEN];
-            let Some(path) = set.iter().nth(cursor as usize) else {
-                _ = stream
-                    .write_all(&[FileType::EndOfTransaction.as_byte()])
-                    .await;
+            let Some(path) = files.get(cursor as usize) else {
+                let mut buf = [0];
+                let resp = Response::ExtCommand(ExtCommand::EndOfTransaction);
+                if resp.encode(&mut buf).is_err() {
+                    break;
+                };
+                _ = stream.write_all(&buf).await;
                 break;
             };
+
             let fs_size = match path.metadata() {
                 Ok(f) => f.len(),
                 Err(e) => {
@@ -74,91 +78,36 @@ impl Accept {
             };
 
             let file_name_invalid = async {
-                _ = stream
-                    .write_all(&[FileType::FileNameInvalid.as_byte()])
-                    .await;
+                let mut buf = [0];
+                let resp = Response::ExtCommand(ExtCommand::FileNameInvalid);
+                if resp.encode(&mut buf).is_err() {
+                    return;
+                };
+                _ = stream.write_all(&buf).await;
             };
 
             let file_name = path.file_name().unwrap();
             let Some(file_name) = file_name.to_str() else {
                 eprintln!("file_name is not a valid utf-8");
                 file_name_invalid.await;
-                return;
-            };
-
-            let mut split = file_name.split('-');
-            let Some(hex) = split.next() else {
-                eprintln!("file name: no hex");
-                file_name_invalid.await;
-                break;
-            };
-            let Some(file_size) = split.next() else {
-                eprintln!("file name: no file_size");
-                file_name_invalid.await;
-                break;
-            };
-            let Some(x) = split.next() else {
-                eprintln!("file name: no res_x");
-                file_name_invalid.await;
-                break;
-            };
-            let Some(y) = split.next() else {
-                eprintln!("file name: no res_y");
-                file_name_invalid.await;
-                break;
-            };
-            let Some(typ) = split.next() else {
-                eprintln!("file name: no typ");
-                file_name_invalid.await;
                 break;
             };
 
-            if split.next().is_some() {
-                eprintln!("file name field exceed 5");
-                file_name_invalid.await;
-                break;
-            }
-
-            let Ok(hex) = hex.as_bytes().try_into() else {
-                eprintln!("hex length not equals to 40");
-                file_name_invalid.await;
-                break;
-            };
-
-            let hash = nyansync::hex::hex_to_bytes(&hex);
-            let Ok(file_size) = file_size.parse() else {
-                eprintln!("file_size not a valid u32");
-                file_name_invalid.await;
-                break;
-            };
-            if fs_size != file_size as u64 {
-                eprintln!("fs_size not equals to file_size");
-                file_name_invalid.await;
-                break;
-            }
-            let Ok(x) = x.parse() else {
-                eprintln!("res_x not a valid u32");
-                file_name_invalid.await;
-                break;
-            };
-            let Ok(y) = y.parse() else {
-                eprintln!("res_y not a valid u32");
-                file_name_invalid.await;
-                break;
-            };
-            let typ = match typ {
-                "gif" => FileType::Gif,
-                "jpg" => FileType::Jpg,
-                "wbp" => FileType::Webp,
-                "png" => FileType::Png,
-                _ => {
-                    eprintln!("unknown typ: {typ}");
+            let header = match ResponseHeader::try_from(file_name) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("file name parse error: {e}");
                     file_name_invalid.await;
                     break;
                 }
             };
 
-            let resp = Response::new(typ, hash, Resolution::new(x, y), file_size);
+            if header.payload_len() as u64 != fs_size {
+                file_name_invalid.await;
+                break;
+            }
+
+            let resp = Response::Ok(header);
             if resp.encode(resp_bytes).is_err() {
                 eprintln!("resp encode failed");
                 break;

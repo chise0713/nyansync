@@ -28,6 +28,7 @@ fn main() -> Result<ExitCode> {
 
     let listen = std::net::TcpListener::bind(listen.as_ref())?;
 
+    // btree build stable file indexs
     let mut set: BTreeSet<Box<Path>> = BTreeSet::new();
 
     let walkdir = WalkDir::new(root.as_ref())
@@ -39,18 +40,22 @@ fn main() -> Result<ExitCode> {
         set.insert(Box::from(path));
     }
 
-    let (rt, async_main) = AsyncMain::new(set, listen)?;
+    let (rt, async_main) = AsyncMain::new(
+        // freeze btree into boxed slice
+        set.into_iter().collect(),
+        listen,
+    )?;
     rt.block_on(async_main.enter())
 }
 
 struct AsyncMain {
-    set: BTreeSet<Box<Path>>,
+    set: Box<[Box<Path>]>,
     listen: std::net::TcpListener,
     worker_threads: usize,
 }
 
 impl AsyncMain {
-    fn new(set: BTreeSet<Box<Path>>, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
+    fn new(set: Box<[Box<Path>]>, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()
@@ -75,6 +80,8 @@ impl AsyncMain {
         let ln = Arc::new(TcpListener::from_std(self.listen)?);
         let set = Arc::new(self.set);
         let (notify_shutdown, shutdown) = broadcast::channel(self.worker_threads + 1);
+
+        eprintln!("service started");
 
         let mut join_set = JoinSet::new();
 
