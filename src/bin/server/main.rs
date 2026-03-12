@@ -4,12 +4,7 @@ mod args;
 use std::{collections::BTreeSet, num::NonZero, path::Path, process::ExitCode, sync::Arc, thread};
 
 use anyhow::Result;
-use tokio::{
-    net::TcpListener,
-    runtime::Runtime,
-    sync::{Semaphore, broadcast},
-    task::JoinSet,
-};
+use tokio::{net::TcpListener, runtime::Runtime, sync::broadcast, task::JoinSet};
 use walkdir::WalkDir;
 
 use crate::{
@@ -76,10 +71,10 @@ impl AsyncMain {
     }
 
     async fn enter(self) -> Result<ExitCode> {
+        self.listen.set_nonblocking(true)?;
         let ln = Arc::new(TcpListener::from_std(self.listen)?);
-        let semaphore = Arc::new(Semaphore::new(self.worker_threads + 1));
         let set = Arc::new(self.set);
-        let (tx, rx) = broadcast::channel(self.worker_threads + 1);
+        let (notify_shutdown, shutdown) = broadcast::channel(self.worker_threads + 1);
 
         let mut join_set = JoinSet::new();
 
@@ -87,21 +82,17 @@ impl AsyncMain {
             _ = join_set.spawn(Accept::accept(
                 ln.clone(),
                 set.clone(),
-                semaphore.clone(),
-                tx.clone(),
-                tx.subscribe(),
+                notify_shutdown.clone(),
+                notify_shutdown.subscribe(),
             ))
         });
 
         let exit_code = ExitCode::FAILURE;
 
         tokio::select! {
-            _ = join_set.join_next() => {
-
-            },
-            _ = Accept::accept(ln, set, semaphore, tx, rx) => {
-
-            }
+            // do not exit when no worker_thread
+            Some(_) = join_set.join_next() => {},
+            _ = Accept::accept(ln, set, notify_shutdown, shutdown) => {}
         }
 
         Ok(exit_code)

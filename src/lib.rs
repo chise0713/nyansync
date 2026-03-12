@@ -35,12 +35,12 @@ pub enum FileType {
     Webp,
     Png,
     // also commands i guess
-    NotValid = 254,
-    EndOfTransition = 255,
+    FileNameInvalid = 254,
+    EndOfTransaction = 255,
 }
 
 impl FileType {
-    pub fn as_byte(self) -> u8 {
+    pub const fn as_byte(self) -> u8 {
         self as u8
     }
 }
@@ -54,8 +54,8 @@ impl TryFrom<u8> for FileType {
             1 => Ok(FileType::Jpg),
             2 => Ok(FileType::Webp),
             3 => Ok(FileType::Png),
-            254 => Ok(FileType::NotValid),
-            255 => Ok(FileType::EndOfTransition),
+            254 => Ok(FileType::FileNameInvalid),
+            255 => Ok(FileType::EndOfTransaction),
             _ => Err(Error::new(ErrorKind::InvalidData, "invalid file type")),
         }
     }
@@ -71,8 +71,8 @@ impl Display for FileType {
                 Self::Jpg => "jpg",
                 Self::Webp => "wbp",
                 Self::Png => "png",
-                Self::NotValid => "ivl",
-                Self::EndOfTransition => "eot",
+                Self::FileNameInvalid => "fiv",
+                Self::EndOfTransaction => "eot",
             }
         )
     }
@@ -188,7 +188,10 @@ impl Response {
         let file_type = FileType::try_from(buf[n])?;
         n += Self::FILE_TYPE_LEN;
 
-        if matches!(file_type, FileType::NotValid | FileType::EndOfTransition) {
+        if matches!(
+            file_type,
+            FileType::FileNameInvalid | FileType::EndOfTransaction
+        ) {
             return Ok(Some((
                 Self::new(file_type, [0; _], Resolution::new(0, 0), 0),
                 1,
