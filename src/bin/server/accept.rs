@@ -1,10 +1,9 @@
-use std::{io::SeekFrom, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use nyansync::{ExtCommand, Request, Response, ResponseHeader};
-use sha1::{Digest as _, Sha1};
+use nyansync::{ExtCommand, Request, Response, ResponseHeader, hex};
 use tokio::{
     fs::File,
-    io::{self, AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _},
+    io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::TcpStream,
 };
 
@@ -46,7 +45,7 @@ impl Accept {
                 }
             };
 
-            let hash = match sha1sum(&mut file).await {
+            let hash = match hex::sha1sum(&mut file).await {
                 Ok(hash) => hash,
                 Err(e) => {
                     eprintln!("sha1sum error: {e}");
@@ -54,7 +53,7 @@ impl Accept {
                 }
             };
 
-            let fs_size = match path.metadata() {
+            let fs_size = match file.metadata().await {
                 Ok(f) => f.len(),
                 Err(e) => {
                     eprintln!("fs_size: {e}");
@@ -116,22 +115,4 @@ impl Accept {
             };
         }
     }
-}
-
-async fn sha1sum(file: &mut File) -> io::Result<[u8; 20]> {
-    let mut hasher = Sha1::new();
-
-    let mut buffer = [0u8; 32 * 1024];
-
-    loop {
-        let n = file.read(&mut buffer).await?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-
-    file.seek(SeekFrom::Start(0)).await?;
-
-    Ok(*hasher.finalize().as_ref())
 }

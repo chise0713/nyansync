@@ -34,7 +34,8 @@ fn main() -> Result<ExitCode> {
     let walkdir = WalkDir::new(root.as_ref())
         .follow_root_links(false)
         .into_iter()
-        .filter_map(Result::ok);
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_file());
     for entry in walkdir {
         let path = entry.path();
         set.insert(Box::from(path));

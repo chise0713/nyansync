@@ -348,6 +348,12 @@ impl Display for ResponseHeader {
 pub type ResponsePayload = Box<[u8]>;
 
 pub mod hex {
+    use sha1::{Digest as _, Sha1};
+    use tokio::{
+        fs::File,
+        io::{AsyncReadExt as _, AsyncSeekExt as _, SeekFrom},
+    };
+
     use super::*;
 
     const HEX_LEN: usize = ResponseHeader::FILE_HASH_LEN * 2;
@@ -389,5 +395,25 @@ pub mod hex {
         }
 
         out
+    }
+
+    pub async fn sha1sum(file: &mut File) -> io::Result<[u8; 20]> {
+        let mut hasher = Sha1::new();
+
+        let mut buffer = [0u8; 32 * 1024];
+
+        file.seek(SeekFrom::Start(0)).await?;
+
+        loop {
+            let n = file.read(&mut buffer).await?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buffer[..n]);
+        }
+
+        file.seek(SeekFrom::Start(0)).await?;
+
+        Ok(*hasher.finalize().as_ref())
     }
 }
