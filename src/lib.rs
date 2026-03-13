@@ -322,6 +322,10 @@ impl ResponseHeader {
         self.file_type
     }
 
+    pub fn file_hash(&self) -> [u8; Self::FILE_HASH_LEN] {
+        self.file_hash
+    }
+
     pub fn payload_len(&self) -> u32 {
         self.payload_len
     }

@@ -1,9 +1,10 @@
-use std::{path::Path, sync::Arc};
+use std::{io::SeekFrom, path::Path, sync::Arc};
 
 use nyansync::{ExtCommand, Request, Response, ResponseHeader};
+use sha1::{Digest as _, Sha1};
 use tokio::{
     fs::File,
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    io::{self, AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _},
     net::TcpStream,
 };
 
@@ -35,6 +36,22 @@ impl Accept {
                 };
                 _ = stream.write_all(&buf).await;
                 break;
+            };
+
+            let mut file = match File::open(path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("failed to open file `{}`: {e}", path.display());
+                    break;
+                }
+            };
+
+            let hash = match sha1sum(&mut file).await {
+                Ok(hash) => hash,
+                Err(e) => {
+                    eprintln!("sha1sum error: {e}");
+                    return;
+                }
             };
 
             let fs_size = match path.metadata() {
@@ -71,6 +88,13 @@ impl Accept {
             };
 
             if header.payload_len() as u64 != fs_size {
+                eprintln!("file_name's size mismatch with fs_size");
+                file_name_invalid.await;
+                break;
+            }
+
+            if header.file_hash() != hash {
+                eprintln!("file_name's hash mismatch with file hash");
                 file_name_invalid.await;
                 break;
             }
@@ -86,18 +110,28 @@ impl Accept {
                 break;
             };
 
-            let mut file = match File::open(path).await {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!("failed to open file `{}`: {e}", path.display());
-                    break;
-                }
-            };
-
             if tokio::io::copy(&mut file, &mut stream).await.is_err() {
                 eprintln!("copy file to stream failed");
                 break;
             };
         }
     }
+}
+
+async fn sha1sum(file: &mut File) -> io::Result<[u8; 20]> {
+    let mut hasher = Sha1::new();
+
+    let mut buffer = [0u8; 32 * 1024];
+
+    loop {
+        let n = file.read(&mut buffer).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+
+    file.seek(SeekFrom::Start(0)).await?;
+
+    Ok(*hasher.finalize().as_ref())
 }
