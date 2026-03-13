@@ -4,45 +4,13 @@ use nyansync::{ExtCommand, Request, Response, ResponseHeader};
 use tokio::{
     fs::File,
     io::{AsyncReadExt as _, AsyncWriteExt as _},
-    net::{TcpListener, TcpStream},
-    sync::broadcast::{Receiver, Sender},
+    net::TcpStream,
 };
 
 pub struct Accept;
 
 impl Accept {
-    pub async fn accept(
-        ln: Arc<TcpListener>,
-        set: Arc<Box<[Box<Path>]>>,
-        notify_shutdown: Sender<()>,
-        mut shutdown: Receiver<()>,
-    ) {
-        loop {
-            let conn = tokio::select! {
-                conn = ln.accept() => {
-                    conn
-                },
-                _ = shutdown.recv() => {
-                    return;
-                }
-            };
-            let (stream, addr) = match conn {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("accept error: {e}");
-                    // notify all other conn awaiter
-                    _ = notify_shutdown.send(());
-                    return;
-                }
-            };
-
-            eprintln!("new client: {addr}");
-
-            tokio::spawn(Self::stream_handle(stream, set.clone()));
-        }
-    }
-
-    pub async fn stream_handle(mut stream: TcpStream, files: Arc<Box<[Box<Path>]>>) {
+    pub async fn accept(mut stream: TcpStream, files: Arc<Box<[Box<Path>]>>) {
         let mut buf = 0u32.to_be_bytes();
         let resp_bytes: &mut [u8] = &mut [0; ResponseHeader::TOTAL_LEN];
 

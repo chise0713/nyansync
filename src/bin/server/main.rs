@@ -4,7 +4,7 @@ mod args;
 use std::{collections::BTreeSet, num::NonZero, path::Path, process::ExitCode, sync::Arc, thread};
 
 use anyhow::Result;
-use tokio::{net::TcpListener, runtime::Runtime, sync::broadcast, task::JoinSet};
+use tokio::{net::TcpListener, runtime::Runtime, signal};
 use walkdir::WalkDir;
 
 use crate::{
@@ -49,13 +49,12 @@ fn main() -> Result<ExitCode> {
 }
 
 struct AsyncMain {
-    set: Box<[Box<Path>]>,
+    files: Box<[Box<Path>]>,
     listen: std::net::TcpListener,
-    worker_threads: usize,
 }
 
 impl AsyncMain {
-    fn new(set: Box<[Box<Path>]>, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
+    fn new(files: Box<[Box<Path>]>, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()
@@ -63,43 +62,54 @@ impl AsyncMain {
             .unwrap_or(1);
         let worker_threads = total_threads.saturating_sub(MAIN_THREAD);
 
-        Ok((
-            tokio::runtime::Builder::new_multi_thread()
+        let rt = if worker_threads == 0 {
+            tokio::runtime::Builder::new_current_thread()
                 .enable_all()
-                .build()?,
-            Self {
-                set,
-                listen,
-                worker_threads,
-            },
-        ))
+                .build()?
+        } else {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(worker_threads)
+                .enable_all()
+                .build()?
+        };
+
+        Ok((rt, Self { files, listen }))
     }
 
     async fn enter(self) -> Result<ExitCode> {
         self.listen.set_nonblocking(true)?;
-        let ln = Arc::new(TcpListener::from_std(self.listen)?);
-        let set = Arc::new(self.set);
-        let (notify_shutdown, shutdown) = broadcast::channel(self.worker_threads + 1);
+        let ln = TcpListener::from_std(self.listen)?;
+        let files = Arc::new(self.files);
 
         eprintln!("service started");
 
-        let mut join_set = JoinSet::new();
+        let mut exit_code = ExitCode::FAILURE;
 
-        (0..self.worker_threads).for_each(|_| {
-            _ = join_set.spawn(Accept::accept(
-                ln.clone(),
-                set.clone(),
-                notify_shutdown.clone(),
-                notify_shutdown.subscribe(),
-            ))
+        let task = tokio::spawn(async move {
+            loop {
+                let (stream, addr) = match ln.accept().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("accept error: {e}");
+                        return;
+                    }
+                };
+                eprintln!("new client: {addr}");
+                tokio::spawn(Accept::accept(stream, files.clone()));
+            }
         });
 
-        let exit_code = ExitCode::FAILURE;
-
         tokio::select! {
-            // do not exit when no worker_thread
-            Some(_) = join_set.join_next() => {},
-            _ = Accept::accept(ln, set, notify_shutdown, shutdown) => {}
+            r = signal::ctrl_c() => {
+                match r {
+                    Ok(()) => {
+                        eprintln!("shutting down");
+                        exit_code = ExitCode::SUCCESS;
+                    },
+                    Err(e) => eprintln!("{e}"),
+                }
+            },
+            _ = task => {}
         }
 
         Ok(exit_code)
