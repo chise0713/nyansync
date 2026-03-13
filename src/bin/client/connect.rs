@@ -160,6 +160,7 @@ impl Connect {
 
             if resp_header.file_hash() != hash {
                 eprintln!("file hash mismatch with file_name's hash");
+                _ = fs::remove_file(path).await;
                 continue;
             }
 
