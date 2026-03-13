@@ -30,10 +30,10 @@ impl Request {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum FileType {
-    Gif,
-    Jpg,
-    Webp,
-    Png,
+    Gif = 0,
+    Jpg = 1,
+    Webp = 2,
+    Png = 3,
 }
 
 impl FileType {

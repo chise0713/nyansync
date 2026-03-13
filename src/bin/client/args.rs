@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 
 #[derive(supershorty::Args, Debug)]
-#[args(name = "nyansync-server")]
+#[args(name = "nyansync")]
 pub struct Args {
     #[arg(flag = 'c', help = "cursor start")]
     pub cursor: Option<u32>,

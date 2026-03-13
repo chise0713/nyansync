@@ -66,7 +66,7 @@ impl AsyncMain {
         };
 
         let task_count = if task_count == 0 {
-            worker_threads
+            worker_threads + 1
         } else {
             task_count as usize
         };
@@ -102,9 +102,13 @@ impl AsyncMain {
                     Err(e) => eprintln!("{e}"),
                 }
             },
-            // do not exit when no worker thread
-            Some(_) = join_set.join_next() => {},
-            _ = Connect::connect(cursor, server_address) => {}
+            e = join_set.join_all() => {
+                // if all booleans are `true`
+                if e.into_iter().all(|e| e) {
+                    eprintln!("end of transaction");
+                    exit_code = ExitCode::SUCCESS;
+                }
+            },
         }
 
         Ok(exit_code)
