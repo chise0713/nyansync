@@ -20,24 +20,21 @@ fn main() -> Result<ExitCode> {
     let Args {
         cursor,
         server_address,
+        task_count,
     } = match Args::parse() {
         Ok(v) => v,
         Err(e) => return Ok(e),
     };
 
-    let Some(cursor) = cursor else {
-        return args::invalid_argument();
-    };
+    let cursor = cursor.unwrap_or_default();
 
     let Some(server_address) = server_address else {
         return args::invalid_argument();
     };
 
-    let Ok(cursor) = cursor.parse() else {
-        return args::invalid_argument();
-    };
+    let task_count = task_count.unwrap_or_default();
 
-    let (rt, async_main) = AsyncMain::new(cursor, server_address)?;
+    let (rt, async_main) = AsyncMain::new(cursor, server_address, task_count)?;
 
     rt.block_on(async_main.enter())
 }
@@ -45,11 +42,11 @@ fn main() -> Result<ExitCode> {
 struct AsyncMain {
     cursor: u32,
     server_address: Box<str>,
-    worker_threads: usize,
+    task_count: usize,
 }
 
 impl AsyncMain {
-    fn new(cursor: u32, server_address: Box<str>) -> Result<(Runtime, Self)> {
+    fn new(cursor: u32, server_address: Box<str>, task_count: u32) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()
@@ -68,12 +65,18 @@ impl AsyncMain {
                 .build()?
         };
 
+        let task_count = if task_count == 0 {
+            worker_threads
+        } else {
+            task_count as usize
+        };
+
         Ok((
             rt,
             Self {
                 cursor,
                 server_address,
-                worker_threads,
+                task_count,
             },
         ))
     }
@@ -83,7 +86,7 @@ impl AsyncMain {
         let server_address: Arc<str> = self.server_address.into();
 
         let mut join_set = JoinSet::new();
-        (0..self.worker_threads).for_each(|_| {
+        (0..self.task_count).for_each(|_| {
             _ = join_set.spawn(Connect::connect(cursor.clone(), server_address.clone()))
         });
 

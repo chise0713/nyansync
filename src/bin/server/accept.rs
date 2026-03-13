@@ -113,6 +113,8 @@ impl Accept {
                 eprintln!("copy file to stream failed");
                 break;
             };
+
+            eprintln!("sent a file {file_name}");
         }
     }
 }

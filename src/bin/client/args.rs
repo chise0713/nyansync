@@ -6,7 +6,9 @@ use anyhow::Result;
 #[args(name = "nyansync-server")]
 pub struct Args {
     #[arg(flag = 'c', help = "cursor start")]
-    pub cursor: Option<Box<str>>,
+    pub cursor: Option<u32>,
+    #[arg(flag = 't', help = "multi thread download task count")]
+    pub task_count: Option<u32>,
     #[arg(flag = 's', help = "server address")]
     pub server_address: Option<Box<str>>,
 }

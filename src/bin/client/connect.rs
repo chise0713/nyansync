@@ -11,7 +11,7 @@ use anyhow::{Result, bail};
 use nyansync::{ExtCommand, Request, Response, ResponseHeader, hex};
 use tokio::{
     fs::{self, File},
-    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    io::{self, AsyncReadExt as _, AsyncWriteExt as _},
     net::TcpStream,
 };
 
@@ -27,6 +27,7 @@ impl Connect {
                     return;
                 }
             };
+            eprintln!("connected to {server_address}");
 
             // if error occurred, retry in this loop.
             //
@@ -79,7 +80,8 @@ impl Connect {
                     Ok(Some((resp, _))) => resp,
                     Ok(None) => unreachable!(),
                     Err(e) => {
-                        bail!("response decode error: {e}");
+                        eprintln!("response decode error: {e}");
+                        continue;
                     }
                 }
             };
@@ -92,14 +94,30 @@ impl Connect {
                 },
             };
 
+            let mut file_reader = (&mut stream).take(resp_header.payload_len() as u64);
+
+            let mut sink_file = async || {
+                if tokio::io::copy(&mut file_reader, &mut io::sink())
+                    .await
+                    .is_ok()
+                {
+                    false
+                } else {
+                    eprintln!("failed to copy reader to sink");
+                    true
+                }
+            };
+
             let file_name = format!("{resp_header}");
             let mut file_name_step_2_iter = file_name.as_bytes().array_windows();
 
             let Some(dir_first) = file_name_step_2_iter.next() else {
-                bail!("unexpected file_name size");
+                eprintln!("unexpected file_name size");
+                continue;
             };
             let Some(dir_second) = file_name_step_2_iter.next() else {
-                bail!("unexpected file_name size");
+                eprintln!("unexpected file_name size");
+                continue;
             };
 
             let dir_first: &[u8; 2] = dir_first;
@@ -110,7 +128,8 @@ impl Connect {
             let dir = PathBuf::new().join(dir_first).join(dir_second);
 
             if let Err(e) = fs::create_dir_all(&dir).await {
-                bail!("create dir all error: {e}");
+                eprintln!("create dir all error: {e}");
+                break Ok(());
             };
 
             let path = dir.join(&file_name);
@@ -119,39 +138,47 @@ impl Connect {
                 Ok(f) => f,
                 Err(e) => {
                     if matches!(e.kind(), ErrorKind::AlreadyExists) {
-                        bail!("file exist");
+                        eprintln!("file exist: {file_name}");
+                        if sink_file().await {
+                            break Ok(());
+                        }
+                        continue;
                     } else {
-                        bail!("create new file error: {e}");
+                        eprintln!("create new file error: {e}");
+                        _ = sink_file().await;
+                        break Ok(());
                     }
                 }
             };
 
-            let mut reader = (&mut stream).take(resp_header.payload_len() as u64);
-
-            if tokio::io::copy(&mut reader, &mut file).await.is_err() {
+            if tokio::io::copy(&mut file_reader, &mut file).await.is_err() {
                 bail!("failed to copy reader to file");
             };
 
             let hash = match hex::sha1sum(&mut file).await {
                 Ok(hash) => hash,
                 Err(e) => {
-                    bail!("sha1sum error: {e}");
+                    eprintln!("sha1sum error: {e}");
+                    continue;
                 }
             };
 
             if resp_header.file_hash() != hash {
-                bail!("file hash mismatch with file_name's hash");
+                eprintln!("file hash mismatch with file_name's hash");
+                continue;
             }
 
             let fs_size = match file.metadata().await {
                 Ok(f) => f.len(),
                 Err(e) => {
-                    bail!("fs_size: {e}");
+                    eprintln!("fs_size: {e}");
+                    continue;
                 }
             };
 
             if resp_header.payload_len() as u64 != fs_size {
-                bail!("payload_len mismatch with fs_size");
+                eprintln!("payload_len mismatch with fs_size");
+                continue;
             }
 
             eprintln!("received a new file: {file_name}");
