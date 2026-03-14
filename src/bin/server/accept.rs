@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{net::SocketAddr, path::Path, sync::Arc};
 
 use nyansync::{ExtCommand, Request, Response, ResponseHeader, hex};
 use tokio::{
@@ -10,7 +10,7 @@ use tokio::{
 pub struct Accept;
 
 impl Accept {
-    pub async fn accept(mut stream: TcpStream, files: Arc<Box<[Box<Path>]>>) {
+    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<Box<[Box<Path>]>>) {
         let mut buf = 0u32.to_be_bytes();
         let resp_bytes: &mut [u8] = &mut [0; ResponseHeader::TOTAL_LEN];
 
@@ -30,10 +30,13 @@ impl Accept {
             let Some(path) = files.get(cursor as usize) else {
                 let mut buf = [0];
                 let resp = Response::ExtCommand(ExtCommand::EndOfTransaction);
-                if resp.encode(&mut buf).is_err() {
+                if let Err(e) = resp.encode(&mut buf) {
+                    eprintln!("failed to encode response: {e}");
                     break;
                 };
                 _ = stream.write_all(&buf).await;
+                _ = stream.shutdown().await;
+                eprintln!("client {addr} disconnected");
                 break;
             };
 

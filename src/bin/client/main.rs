@@ -9,7 +9,11 @@ use std::{
 };
 
 use anyhow::Result;
-use tokio::{runtime::Runtime, signal, task::JoinSet};
+use tokio::{
+    runtime::Runtime,
+    signal,
+    task::{JoinSet, LocalSet},
+};
 
 use crate::{
     args::{Args, Parse as _},
@@ -86,9 +90,12 @@ impl AsyncMain {
         let server_address: Arc<str> = self.server_address.into();
 
         let mut join_set = JoinSet::new();
-        (0..self.task_count).for_each(|_| {
+        (0..self.task_count - 1).for_each(|_| {
             _ = join_set.spawn(Connect::connect(cursor.clone(), server_address.clone()))
         });
+
+        let local_set = LocalSet::new();
+        join_set.spawn_local_on(Connect::connect(cursor, server_address), &local_set);
 
         let mut exit_code = ExitCode::FAILURE;
 
@@ -102,7 +109,7 @@ impl AsyncMain {
                     Err(e) => eprintln!("{e}"),
                 }
             },
-            e = join_set.join_all() => {
+            e = local_set.run_until(join_set.join_all()) => {
                 // if all booleans are `true`
                 if e.into_iter().all(|e| e) {
                     eprintln!("end of transaction");

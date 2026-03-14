@@ -86,7 +86,7 @@ impl AsyncMain {
 
         let mut exit_code = ExitCode::FAILURE;
 
-        let task = tokio::spawn(async move {
+        let task = async {
             loop {
                 let (stream, addr) = match ln.accept().await {
                     Ok(v) => v,
@@ -96,9 +96,9 @@ impl AsyncMain {
                     }
                 };
                 eprintln!("new client: {addr}");
-                tokio::spawn(Accept::accept(stream, files.clone()));
+                tokio::spawn(Accept::accept(stream, addr, files.clone()));
             }
-        });
+        };
 
         tokio::select! {
             r = signal::ctrl_c() => {
