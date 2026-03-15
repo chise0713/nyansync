@@ -136,6 +136,9 @@ impl Response {
                 n += ResponseHeader::PAYLOAD_LEN_LEN;
             }
             Self::ExtCommand(ext_command) => {
+                if buf.is_empty() {
+                    return Err(Error::new(ErrorKind::UnexpectedEof, "buffer too short"));
+                }
                 buf[n] = ext_command.as_byte();
                 n += 1;
             }
