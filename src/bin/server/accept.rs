@@ -12,7 +12,7 @@ pub struct Accept;
 impl Accept {
     pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<Box<[Box<Path>]>>) {
         let mut buf = 0u32.to_be_bytes();
-        let resp_bytes: &mut [u8] = &mut [0; ResponseHeader::TOTAL_LEN];
+        let mut resp_bytes = [0; ResponseHeader::TOTAL_LEN];
 
         loop {
             match stream.read_exact(buf.as_mut_slice()).await {
@@ -34,8 +34,6 @@ impl Accept {
                     break;
                 };
                 _ = stream.write_all(&resp_bytes[..1]).await;
-                _ = stream.shutdown().await;
-                eprintln!("client {addr} disconnected");
                 break;
             };
 
@@ -100,12 +98,12 @@ impl Accept {
             }
 
             let resp = Response::Ok(header);
-            if resp.encode(resp_bytes).is_err() {
+            if resp.encode(resp_bytes.as_mut_slice()).is_err() {
                 eprintln!("resp encode failed");
                 break;
             };
 
-            if stream.write_all(resp_bytes).await.is_err() {
+            if stream.write_all(resp_bytes.as_slice()).await.is_err() {
                 eprintln!("write_all resp_bytes failed");
                 break;
             };
@@ -117,5 +115,8 @@ impl Accept {
 
             eprintln!("sent a file {file_name}");
         }
+
+        _ = stream.shutdown().await;
+        eprintln!("client {addr} disconnected");
     }
 }
