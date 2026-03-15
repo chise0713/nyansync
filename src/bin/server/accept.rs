@@ -28,13 +28,12 @@ impl Accept {
             let cursor = req.cursor();
 
             let Some(path) = files.get(cursor as usize) else {
-                let mut buf = [0];
                 let resp = Response::ExtCommand(ExtCommand::EndOfTransaction);
-                if let Err(e) = resp.encode(&mut buf) {
+                if let Err(e) = resp.encode(&mut resp_bytes[..1]) {
                     eprintln!("failed to encode response: {e}");
                     break;
                 };
-                _ = stream.write_all(&buf).await;
+                _ = stream.write_all(&resp_bytes[..1]).await;
                 _ = stream.shutdown().await;
                 eprintln!("client {addr} disconnected");
                 break;
@@ -65,12 +64,11 @@ impl Accept {
             };
 
             let file_name_invalid = async {
-                let mut buf = [0];
                 let resp = Response::ExtCommand(ExtCommand::FileNameInvalid);
-                if resp.encode(&mut buf).is_err() {
+                if resp.encode(&mut resp_bytes[..1]).is_err() {
                     return;
                 };
-                _ = stream.write_all(&buf).await;
+                _ = stream.write_all(&resp_bytes[..1]).await;
             };
 
             let file_name = path.file_name().unwrap();
