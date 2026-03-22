@@ -4,7 +4,10 @@ mod connect;
 use std::{
     num::NonZero,
     process::ExitCode,
-    sync::{Arc, atomic::AtomicU32},
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
     thread,
 };
 
@@ -95,7 +98,7 @@ impl AsyncMain {
         });
 
         let local_set = LocalSet::new();
-        join_set.spawn_local_on(Connect::connect(cursor, server_address), &local_set);
+        join_set.spawn_local_on(Connect::connect(cursor.clone(), server_address), &local_set);
 
         let mut exit_code = ExitCode::FAILURE;
 
@@ -117,6 +120,8 @@ impl AsyncMain {
                 }
             },
         }
+
+        eprintln!("cursor ends at: {}", cursor.load(Ordering::Relaxed));
 
         Ok(exit_code)
     }
