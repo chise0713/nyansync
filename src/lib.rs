@@ -107,13 +107,13 @@ pub enum Response {
 }
 
 impl Response {
-    pub fn encode(&self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn encode(&self, buf: &mut [u8]) -> Option<usize> {
         let mut n = 0;
 
         match self {
             Self::Ok(response_header) => {
                 if buf.len() < ResponseHeader::TOTAL_LEN {
-                    return Err(Error::new(ErrorKind::UnexpectedEof, "buffer too short"));
+                    return None;
                 }
 
                 // file_type
@@ -137,14 +137,14 @@ impl Response {
             }
             Self::ExtCommand(ext_command) => {
                 if buf.is_empty() {
-                    return Err(Error::new(ErrorKind::UnexpectedEof, "buffer too short"));
+                    return None;
                 }
                 buf[n] = ext_command.as_byte();
                 n += 1;
             }
         }
 
-        Ok(n)
+        Some(n)
     }
 
     pub fn decode(buf: &[u8]) -> io::Result<Option<(Self, usize)>> {

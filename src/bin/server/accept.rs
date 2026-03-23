@@ -29,8 +29,8 @@ impl Accept {
 
             let Some(path) = files.get(cursor as usize) else {
                 let resp = Response::ExtCommand(ExtCommand::EndOfTransaction);
-                if let Err(e) = resp.encode(&mut resp_bytes[..1]) {
-                    eprintln!("failed to encode response: {e}");
+                if resp.encode(&mut resp_bytes[..1]).is_none() {
+                    eprintln!("failed to encode response: buffer too short");
                     break;
                 };
                 _ = stream.write_all(&resp_bytes[..1]).await;
@@ -63,7 +63,7 @@ impl Accept {
 
             let file_name_invalid = async {
                 let resp = Response::ExtCommand(ExtCommand::FileNameInvalid);
-                if resp.encode(&mut resp_bytes[..1]).is_err() {
+                if resp.encode(&mut resp_bytes[..1]).is_none() {
                     return;
                 };
                 _ = stream.write_all(&resp_bytes[..1]).await;
@@ -98,8 +98,8 @@ impl Accept {
             }
 
             let resp = Response::Ok(header);
-            if resp.encode(resp_bytes.as_mut_slice()).is_err() {
-                eprintln!("resp encode failed");
+            if resp.encode(resp_bytes.as_mut_slice()).is_none() {
+                eprintln!("failed to encode response: buffer too short");
                 break;
             };
 
