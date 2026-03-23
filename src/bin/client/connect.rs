@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Result, bail};
 use nyansync::{ExtCommand, Request, Response, ResponseHeader, hex};
 use tokio::{
-    fs::{self, File},
+    fs::{self, OpenOptions},
     io::{self, AsyncReadExt as _, AsyncWriteExt as _},
     net::TcpStream,
 };
@@ -18,7 +18,11 @@ use tokio::{
 pub struct Connect;
 
 impl Connect {
-    pub async fn connect(cursor: Arc<AtomicU32>, server_address: Arc<str>) -> bool {
+    pub async fn connect(
+        cursor: Arc<AtomicU32>,
+        server_address: Arc<str>,
+        override_files: bool,
+    ) -> bool {
         loop {
             let mut stream = match TcpStream::connect(server_address.as_ref()).await {
                 Ok(s) => s,
@@ -29,7 +33,7 @@ impl Connect {
             };
             eprintln!("connected to {server_address}");
 
-            match Self::handle_stream(&mut stream, cursor.clone()).await {
+            match Self::handle_stream(&mut stream, cursor.clone(), override_files).await {
                 Ok(v) => {
                     _ = stream.shutdown().await;
                     return v;
@@ -39,7 +43,11 @@ impl Connect {
         }
     }
 
-    async fn handle_stream(stream: &mut TcpStream, cursor: Arc<AtomicU32>) -> Result<bool> {
+    async fn handle_stream(
+        stream: &mut TcpStream,
+        cursor: Arc<AtomicU32>,
+        override_files: bool,
+    ) -> Result<bool> {
         let mut write_buf = [0u8; 4];
 
         let mut header_buf = [0u8; ResponseHeader::TOTAL_LEN];
@@ -128,7 +136,15 @@ impl Connect {
 
             let path = dir.join(&file_name);
 
-            let mut file = match File::create_new(&path).await {
+            let mut file = match OpenOptions::new()
+                .read(true)
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .create_new(!override_files)
+                .open(&path)
+                .await
+            {
                 Ok(f) => f,
                 Err(e) => {
                     if matches!(e.kind(), ErrorKind::AlreadyExists) {
@@ -138,7 +154,7 @@ impl Connect {
                         }
                         continue;
                     } else {
-                        eprintln!("create new file error: {e}");
+                        eprintln!("file open error: {e}");
                         _ = sink_file().await;
                         break Ok(false);
                     }

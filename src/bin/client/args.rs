@@ -11,6 +11,8 @@ pub struct Args {
     pub task_count: Option<u32>,
     #[arg(flag = 's', help = "server address")]
     pub server_address: Option<Box<str>>,
+    #[arg(flag = 'o', help = "override existing file")]
+    pub override_files: bool,
 }
 
 const EXIT_INVALID_ARG: u8 = 2;

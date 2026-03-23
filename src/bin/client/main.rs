@@ -28,6 +28,7 @@ fn main() -> Result<ExitCode> {
         cursor,
         server_address,
         task_count,
+        override_files: r#override,
     } = match Args::parse() {
         Ok(v) => v,
         Err(e) => return Ok(e),
@@ -41,7 +42,7 @@ fn main() -> Result<ExitCode> {
 
     let task_count = task_count.unwrap_or_default();
 
-    let (rt, async_main) = AsyncMain::new(cursor, server_address, task_count)?;
+    let (rt, async_main) = AsyncMain::new(cursor, server_address, task_count, r#override)?;
 
     rt.block_on(async_main.enter())
 }
@@ -50,10 +51,16 @@ struct AsyncMain {
     cursor: u32,
     server_address: Box<str>,
     task_count: usize,
+    override_files: bool,
 }
 
 impl AsyncMain {
-    fn new(cursor: u32, server_address: Box<str>, task_count: u32) -> Result<(Runtime, Self)> {
+    fn new(
+        cursor: u32,
+        server_address: Box<str>,
+        task_count: u32,
+        override_files: bool,
+    ) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()
@@ -84,6 +91,7 @@ impl AsyncMain {
                 cursor,
                 server_address,
                 task_count,
+                override_files,
             },
         ))
     }
@@ -94,11 +102,18 @@ impl AsyncMain {
 
         let mut join_set = JoinSet::new();
         (0..self.task_count - 1).for_each(|_| {
-            _ = join_set.spawn(Connect::connect(cursor.clone(), server_address.clone()))
+            _ = join_set.spawn(Connect::connect(
+                cursor.clone(),
+                server_address.clone(),
+                self.override_files,
+            ))
         });
 
         let local_set = LocalSet::new();
-        join_set.spawn_local_on(Connect::connect(cursor.clone(), server_address), &local_set);
+        join_set.spawn_local_on(
+            Connect::connect(cursor.clone(), server_address, self.override_files),
+            &local_set,
+        );
 
         let mut exit_code = ExitCode::FAILURE;
 
