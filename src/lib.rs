@@ -348,8 +348,6 @@ impl Display for ResponseHeader {
     }
 }
 
-pub type ResponsePayload = Box<[u8]>;
-
 pub mod hex {
     use sha1::{Digest as _, Sha1};
     use tokio::{
