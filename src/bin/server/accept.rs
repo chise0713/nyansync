@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::Path, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
 use nyansync::{ExtCommand, Request, Response, ResponseHeader, hex};
 use tokio::{
@@ -7,10 +7,12 @@ use tokio::{
     net::TcpStream,
 };
 
+use crate::files::FileTable;
+
 pub struct Accept;
 
 impl Accept {
-    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<[Box<Path>]>) {
+    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<FileTable>) {
         let mut buf = 0u32.to_be_bytes();
         let mut resp_bytes = [0; ResponseHeader::TOTAL_LEN];
 

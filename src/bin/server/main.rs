@@ -1,5 +1,6 @@
 mod accept;
 mod args;
+mod files;
 
 use std::{collections::BTreeSet, num::NonZero, path::Path, process::ExitCode, sync::Arc, thread};
 
@@ -10,6 +11,7 @@ use walkdir::WalkDir;
 use crate::{
     accept::Accept,
     args::{Args, Parse as _},
+    files::FileTable,
 };
 
 fn main() -> Result<ExitCode> {
@@ -43,19 +45,19 @@ fn main() -> Result<ExitCode> {
 
     let (rt, async_main) = AsyncMain::new(
         // freeze btree into boxed slice
-        set.into_iter().collect(),
+        FileTable::new(set)?,
         listen,
     )?;
     rt.block_on(async_main.enter())
 }
 
 struct AsyncMain {
-    files: Box<[Box<Path>]>,
+    files: FileTable,
     listen: std::net::TcpListener,
 }
 
 impl AsyncMain {
-    fn new(files: Box<[Box<Path>]>, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
+    fn new(files: FileTable, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()
@@ -80,7 +82,7 @@ impl AsyncMain {
     async fn enter(self) -> Result<ExitCode> {
         self.listen.set_nonblocking(true)?;
         let ln = TcpListener::from_std(self.listen)?;
-        let files: Arc<[Box<Path>]> = Arc::from(self.files);
+        let files = Arc::new(self.files);
 
         eprintln!("service started");
 
