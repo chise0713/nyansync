@@ -418,3 +418,122 @@ pub mod hex {
         Ok(*hasher.finalize().as_ref())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_request_encode_decode() {
+        let req = Request::new(0o721);
+        let mut buf = [0u8; 4];
+        req.encode(&mut buf);
+
+        let decoded = Request::decode(buf);
+        assert_eq!(decoded.cursor(), 0o721);
+    }
+
+    #[test]
+    fn test_file_type_try_from() {
+        assert!(matches!(FileType::try_from(0), Ok(FileType::Gif)));
+        assert!(matches!(FileType::try_from(1), Ok(FileType::Jpg)));
+        assert!(matches!(FileType::try_from(2), Ok(FileType::Webp)));
+        assert!(matches!(FileType::try_from(3), Ok(FileType::Png)));
+
+        assert!(FileType::try_from(255).is_err());
+    }
+
+    #[test]
+    fn test_ext_command_try_from() {
+        assert!(matches!(
+            ExtCommand::try_from(254),
+            Ok(ExtCommand::FileNameInvalid)
+        ));
+        assert!(matches!(
+            ExtCommand::try_from(255),
+            Ok(ExtCommand::EndOfTransaction)
+        ));
+
+        assert!(ExtCommand::try_from(1).is_err());
+    }
+
+    #[test]
+    fn test_response_encode_decode_ok() {
+        let header =
+            ResponseHeader::new(FileType::Png, [1u8; 20], Resolution::new(1920, 1080), 12345);
+
+        let resp = Response::Ok(header);
+
+        let mut buf = [0u8; ResponseHeader::TOTAL_LEN];
+        let size = resp.encode(&mut buf).unwrap();
+        assert_eq!(size, ResponseHeader::TOTAL_LEN);
+
+        let decoded = Response::decode(&buf).unwrap().unwrap().0;
+
+        match decoded {
+            Response::Ok(h) => {
+                assert_eq!(h.file_type() as u8, FileType::Png as u8);
+                assert_eq!(h.file_hash(), [1u8; 20]);
+                assert_eq!(h.payload_len(), 12345);
+            }
+            _ => panic!("expected ok response"),
+        }
+    }
+
+    #[test]
+    fn test_response_encode_decode_ext() {
+        let resp = Response::ExtCommand(ExtCommand::EndOfTransaction);
+
+        let mut buf = [0u8; 1];
+        let size = resp.encode(&mut buf).unwrap();
+        assert_eq!(size, 1);
+
+        let decoded = Response::decode(&buf).unwrap().unwrap().0;
+
+        match decoded {
+            Response::ExtCommand(ExtCommand::EndOfTransaction) => {}
+            _ => panic!("expected ext command"),
+        }
+    }
+
+    #[test]
+    fn test_response_header_display_and_parse() {
+        let hash = [0xABu8; 20];
+        let header = ResponseHeader::new(FileType::Jpg, hash, Resolution::new(800, 600), 999);
+
+        let file_name = format!("{header}");
+
+        let parsed = ResponseHeader::try_from(file_name.as_str()).unwrap();
+
+        assert_eq!(parsed.file_type() as u8, FileType::Jpg as u8);
+        assert_eq!(parsed.file_hash(), hash);
+        assert_eq!(parsed.payload_len(), 999);
+    }
+
+    #[test]
+    fn test_response_header_parse_invalid() {
+        assert!(ResponseHeader::try_from("abc-def").is_err());
+
+        let s = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-1-1-1-png";
+        assert!(ResponseHeader::try_from(s).is_err());
+
+        let s = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-1-1-1-xxx";
+        assert!(ResponseHeader::try_from(s).is_err());
+    }
+
+    #[test]
+    fn test_hex_roundtrip() {
+        let bytes = [0x11u8; 20];
+        let hex = hex::bytes_to_hex(&bytes);
+        let back = hex::hex_to_bytes(&hex).unwrap();
+
+        assert_eq!(bytes, back);
+    }
+
+    #[test]
+    fn test_response_decode_partial() {
+        let buf = [1u8; 5];
+        let r = Response::decode(&buf).unwrap();
+        assert!(r.is_none());
+    }
+}
