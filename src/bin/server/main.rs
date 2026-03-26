@@ -80,7 +80,7 @@ impl AsyncMain {
     async fn enter(self) -> Result<ExitCode> {
         self.listen.set_nonblocking(true)?;
         let ln = TcpListener::from_std(self.listen)?;
-        let files = Arc::new(self.files);
+        let files: Arc<[Box<Path>]> = Arc::from(self.files);
 
         eprintln!("service started");
 
