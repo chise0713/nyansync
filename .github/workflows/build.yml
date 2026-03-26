@@ -1,0 +1,106 @@
+name: Build and Upload Binaries
+
+on:
+  push:
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build.yml"
+    branches:
+      - "**"
+  workflow_call:
+  pull_request:
+
+env:
+  BINARY_NAME: nyansync
+
+jobs:
+  build:
+    name: ${{ matrix.platform.target }}
+    runs-on: ${{ matrix.platform.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # linux gnu targets
+          - target: x86_64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+          - target: i686-unknown-linux-gnu
+            runs-on: ubuntu-latest
+          - target: armv7-unknown-linux-gnueabihf
+            runs-on: ubuntu-latest
+          # linux musl targets
+          - target: x86_64-unknown-linux-musl
+            runs-on: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runs-on: ubuntu-latest
+          - target: i686-unknown-linux-musl
+            runs-on: ubuntu-latest
+          - target: armv7-unknown-linux-musleabihf
+            runs-on: ubuntu-latest
+          # macOS targets
+          - target: x86_64-apple-darwin
+            runs-on: macos-latest
+          - target: aarch64-apple-darwin
+            runs-on: macos-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 1
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          rust-cache-parameters: '{"prefix-key":"cross"}'
+          command: "build"
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
+      - name: Upload binary artifact (client)
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.platform.target }}
+          path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}
+      - name: Upload binary artifact (server)
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: ${{ env.BINARY_NAME }}-server-${{ matrix.platform.target }}
+          path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}-server
+  build-windows:
+    name: ${{ matrix.platform.target }}
+    runs-on: ${{ matrix.platform.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # windows targets
+          - target: x86_64-pc-windows-gnu
+            runs-on: windows-latest
+          ##- target: i686-pc-windows-gnu
+          ##  runs-on: windows-latest           # error: linker `i686-w64-mingw32-gcc` not found
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 1
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          rust-cache-parameters: '{"prefix-key":"cross"}'
+          command: "build"
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
+      - name: Upload binary artifact (client)
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.platform.target }}
+          path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}.exe
+      - name: Upload binary artifact (server)
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: ${{ env.BINARY_NAME }}-server-${{ matrix.platform.target }}
+          path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}-server.exe
