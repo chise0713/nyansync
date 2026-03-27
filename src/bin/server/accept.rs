@@ -7,12 +7,12 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::file_table::FileTable;
+use crate::path_table::PathTable;
 
 pub struct Accept;
 
 impl Accept {
-    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<FileTable>) {
+    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<PathTable>) {
         let mut buf = 0u32.to_be_bytes();
         let mut resp_bytes = [0; ResponseHeader::TOTAL_LEN];
 

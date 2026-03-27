@@ -1,6 +1,6 @@
 mod accept;
 mod args;
-mod file_table;
+mod path_table;
 
 use std::{collections::BTreeSet, num::NonZero, path::Path, process::ExitCode, sync::Arc, thread};
 
@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use crate::{
     accept::Accept,
     args::{Args, Parse as _},
-    file_table::FileTable,
+    path_table::PathTable,
 };
 
 fn main() -> Result<ExitCode> {
@@ -45,19 +45,19 @@ fn main() -> Result<ExitCode> {
 
     let (rt, async_main) = AsyncMain::new(
         // freeze btree into boxed slice
-        FileTable::new(set)?,
+        PathTable::new(set)?,
         listen,
     )?;
     rt.block_on(async_main.enter())
 }
 
 struct AsyncMain {
-    files: FileTable,
+    files: PathTable,
     listen: std::net::TcpListener,
 }
 
 impl AsyncMain {
-    fn new(files: FileTable, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
+    fn new(files: PathTable, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()

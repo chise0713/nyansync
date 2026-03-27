@@ -5,39 +5,59 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct FileTable {
+pub struct PathTable {
     inner: Box<[u8]>,
-    offsets: Box<[usize]>,
+    offsets: Box<[u32]>,
 }
 
-impl FileTable {
+impl PathTable {
     pub fn new<I, P>(paths: I) -> io::Result<Self>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
     {
+        let path_iter = paths.into_iter();
+        let (capacity, _) = path_iter.size_hint();
+
         let mut buf = Vec::new();
-        let mut offsets = Vec::new();
+        let mut offsets = Vec::with_capacity(capacity);
 
-        for (i, path) in paths.into_iter().enumerate() {
-            let path = path.as_ref();
+        path_iter
+            .scan(true, |first, path| {
+                let is_first = *first;
+                *first = false;
+                Some((is_first, path))
+            })
+            .try_for_each(|(is_first, path)| -> io::Result<()> {
+                let path = path.as_ref();
 
-            if !path.is_absolute() {
-                return Err(Error::new(ErrorKind::InvalidInput, "path is not absolute"));
-            }
+                if !path.is_absolute() {
+                    return Err(Error::new(ErrorKind::InvalidInput, "path is not absolute"));
+                }
 
-            const NUL: u8 = 0;
-            if path.as_os_str().as_encoded_bytes().contains(&NUL) {
-                return Err(Error::new(ErrorKind::InvalidData, "path contains NUL"));
-            }
+                let bytes = path.as_os_str().as_encoded_bytes();
 
-            if i != 0 {
-                buf.push(b'\0');
-            }
-            offsets.push(buf.len());
+                const NUL: u8 = 0;
+                if bytes.contains(&NUL) {
+                    return Err(Error::new(ErrorKind::InvalidData, "path contains NUL"));
+                }
 
-            buf.extend_from_slice(path.as_os_str().as_encoded_bytes());
-        }
+                if !is_first {
+                    buf.push(b'\0');
+                }
+
+                if buf.len() > u32::MAX as usize {
+                    return Err(Error::new(
+                        ErrorKind::InvalidData,
+                        "path table exceeds 4 GiB limit",
+                    ));
+                }
+                offsets.push(buf.len() as u32);
+
+                buf.extend_from_slice(bytes);
+
+                Ok(())
+            })?;
 
         Ok(Self {
             inner: buf.into_boxed_slice(),
@@ -46,10 +66,10 @@ impl FileTable {
     }
 
     pub fn get(&self, i: usize) -> Option<&Path> {
-        let start = *self.offsets.get(i)?;
+        let start = *self.offsets.get(i)? as usize;
 
         let end = if i + 1 < self.offsets.len() {
-            self.offsets[i + 1] - 1
+            (self.offsets[i + 1] - 1) as usize
         } else {
             self.inner.len()
         };
@@ -67,13 +87,11 @@ impl FileTable {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::*;
 
     #[test]
     fn test_single_path() {
-        let ft = FileTable::new(["/a"]).unwrap();
+        let ft = PathTable::new(["/a"]).unwrap();
 
         assert_eq!(ft.offsets.len(), 1);
         assert_eq!(ft.get(0).unwrap(), Path::new("/a"));
@@ -81,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_multiple_paths() {
-        let ft = FileTable::new(["/a", "/b", "/c"]).unwrap();
+        let ft = PathTable::new(["/a", "/b", "/c"]).unwrap();
 
         assert_eq!(ft.offsets.len(), 3);
 
@@ -92,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_long_paths() {
-        let ft = FileTable::new(["/aaa", "/bbbb", "/ccccc"]).unwrap();
+        let ft = PathTable::new(["/aaa", "/bbbb", "/ccccc"]).unwrap();
 
         assert_eq!(ft.get(0).unwrap(), Path::new("/aaa"));
         assert_eq!(ft.get(1).unwrap(), Path::new("/bbbb"));
@@ -101,13 +119,13 @@ mod tests {
 
     #[test]
     fn test_invalid_relative_path() {
-        let err = FileTable::new(["a"]).unwrap_err();
+        let err = PathTable::new(["a"]).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 
     #[test]
     fn test_out_of_bounds() {
-        let ft = FileTable::new(["/a", "/b"]).unwrap();
+        let ft = PathTable::new(["/a", "/b"]).unwrap();
 
         assert!(ft.get(2).is_none());
         assert!(ft.get(100).is_none());
@@ -115,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let ft = FileTable::new(std::iter::empty::<&str>()).unwrap();
+        let ft = PathTable::new(&[] as &[&str]).unwrap();
 
         assert_eq!(ft.offsets.len(), 0);
         assert!(ft.get(0).is_none());
@@ -123,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_internal_layout() {
-        let ft = FileTable::new(["/a", "/b"]).unwrap();
+        let ft = PathTable::new(["/a", "/b"]).unwrap();
 
         // "/a\0/b"
         assert_eq!(ft.inner.as_ref(), b"/a\0/b");
@@ -135,11 +153,11 @@ mod tests {
     #[test]
     fn test_iter_equivalence() {
         let paths = ["/a", "/b", "/c"];
-        let ft = FileTable::new(paths).unwrap();
+        let ft = PathTable::new(paths).unwrap();
 
-        let collected: Vec<_> = (0..ft.offsets.len()).map(|i| ft.get(i).unwrap()).collect();
+        let collected: Box<[_]> = (0..ft.offsets.len()).map(|i| ft.get(i).unwrap()).collect();
 
-        let expected: Vec<_> = paths.iter().map(Path::new).collect();
+        let expected: Box<[_]> = paths.iter().map(Path::new).collect();
 
         assert_eq!(collected, expected);
     }
