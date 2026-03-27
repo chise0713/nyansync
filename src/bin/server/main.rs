@@ -1,6 +1,6 @@
 mod accept;
 mod args;
-mod files;
+mod file_table;
 
 use std::{collections::BTreeSet, num::NonZero, path::Path, process::ExitCode, sync::Arc, thread};
 
@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use crate::{
     accept::Accept,
     args::{Args, Parse as _},
-    files::FileTable,
+    file_table::FileTable,
 };
 
 fn main() -> Result<ExitCode> {

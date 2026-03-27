@@ -7,7 +7,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::files::FileTable;
+use crate::file_table::FileTable;
 
 pub struct Accept;
 
