@@ -52,12 +52,12 @@ fn main() -> Result<ExitCode> {
 }
 
 struct AsyncMain {
-    files: PathTable,
+    path_table: PathTable,
     listen: std::net::TcpListener,
 }
 
 impl AsyncMain {
-    fn new(files: PathTable, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
+    fn new(path_table: PathTable, listen: std::net::TcpListener) -> Result<(Runtime, Self)> {
         const MAIN_THREAD: usize = 1;
         // zero worker when only main thread available
         let total_threads = thread::available_parallelism()
@@ -76,13 +76,13 @@ impl AsyncMain {
                 .build()?
         };
 
-        Ok((rt, Self { files, listen }))
+        Ok((rt, Self { path_table, listen }))
     }
 
     async fn enter(self) -> Result<ExitCode> {
         self.listen.set_nonblocking(true)?;
         let ln = TcpListener::from_std(self.listen)?;
-        let files = Arc::new(self.files);
+        let files = Arc::new(self.path_table);
 
         eprintln!("service started");
 

@@ -12,7 +12,7 @@ use crate::path_table::PathTable;
 pub struct Accept;
 
 impl Accept {
-    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, files: Arc<PathTable>) {
+    pub async fn accept(mut stream: TcpStream, addr: SocketAddr, path_table: Arc<PathTable>) {
         let mut buf = 0u32.to_be_bytes();
         let mut resp_bytes = [0; ResponseHeader::TOTAL_LEN];
 
@@ -29,7 +29,7 @@ impl Accept {
 
             let cursor = req.cursor();
 
-            let Some(path) = files.get(cursor as usize) else {
+            let Some(path) = path_table.get(cursor as usize) else {
                 let resp = Response::ExtCommand(ExtCommand::EndOfTransaction);
                 if resp.encode(&mut resp_bytes[..1]).is_none() {
                     eprintln!("failed to encode response: buffer too short");
