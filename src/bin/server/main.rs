@@ -2,7 +2,7 @@ mod accept;
 mod args;
 mod path_table;
 
-use std::{num::NonZero, path::PathBuf, process::ExitCode, sync::Arc, thread};
+use std::{cmp::Reverse, num::NonZero, path::PathBuf, process::ExitCode, sync::Arc, thread};
 
 use anyhow::Result;
 use tokio::{net::TcpListener, runtime::Runtime, signal};
@@ -15,7 +15,11 @@ use crate::{
 };
 
 fn main() -> Result<ExitCode> {
-    let Args { root, listen } = match Args::parse() {
+    let Args {
+        root,
+        listen,
+        timestamp,
+    } = match Args::parse() {
         Ok(v) => v,
         Err(e) => return Ok(e),
     };
@@ -30,21 +34,32 @@ fn main() -> Result<ExitCode> {
 
     let listen = std::net::TcpListener::bind(listen.as_ref())?;
 
-    let mut paths: Box<[_]> = WalkDir::new(root.as_ref())
+    let paths = WalkDir::new(root.as_ref())
         .follow_root_links(false)
         .into_iter()
-        .filter_map(Result::ok)
-        .map(DirEntry::into_path)
-        .map(PathBuf::into_boxed_path)
-        .filter(|p| p.is_file())
-        .collect();
-    paths.sort_unstable();
+        .filter_map(Result::ok);
+    let paths = if timestamp {
+        let mut paths: Box<[_]> = paths
+            .filter_map(|e| {
+                if !e.file_type().is_file() {
+                    return None;
+                }
+                let mtime = e.metadata().ok()?.modified().ok()?;
+                Some((mtime, e.into_path().into_boxed_path()))
+            })
+            .collect();
+        paths.sort_unstable_by_key(|(t, _)| Reverse(*t));
+        paths.into_iter().map(|(_, p)| p).collect()
+    } else {
+        let mut paths: Box<[_]> = paths
+            .map(DirEntry::into_path)
+            .map(PathBuf::into_boxed_path)
+            .collect();
+        paths.sort_unstable();
+        paths
+    };
 
-    let (rt, async_main) = AsyncMain::new(
-        // freeze btree into boxed slice
-        PathTable::new(paths)?,
-        listen,
-    )?;
+    let (rt, async_main) = AsyncMain::new(PathTable::new(paths)?, listen)?;
     rt.block_on(async_main.enter())
 }
 

@@ -9,6 +9,8 @@ pub struct Args {
     pub root: Option<Box<str>>,
     #[arg(flag = 'l', help = "listen address")]
     pub listen: Option<Box<str>>,
+    #[arg(flag = 't', help = "sort using timestamp")]
+    pub timestamp: bool,
 }
 
 const EXIT_INVALID_ARG: u8 = 2;
