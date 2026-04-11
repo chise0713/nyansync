@@ -34,12 +34,12 @@ fn main() -> Result<ExitCode> {
 
     let listen = std::net::TcpListener::bind(listen.as_ref())?;
 
-    let paths = WalkDir::new(root.as_ref())
+    let dir_entry = WalkDir::new(root.as_ref())
         .follow_root_links(false)
         .into_iter()
         .filter_map(Result::ok);
     let paths = if timestamp {
-        let mut paths: Box<[_]> = paths
+        let mut paths: Box<[_]> = dir_entry
             .filter_map(|e| {
                 if !e.file_type().is_file() {
                     return None;
@@ -51,7 +51,8 @@ fn main() -> Result<ExitCode> {
         paths.sort_unstable_by_key(|(t, _)| Reverse(*t));
         paths.into_iter().map(|(_, p)| p).collect()
     } else {
-        let mut paths: Box<[_]> = paths
+        let mut paths: Box<[_]> = dir_entry
+            .filter(|e| e.file_type().is_file())
             .map(DirEntry::into_path)
             .map(PathBuf::into_boxed_path)
             .collect();
