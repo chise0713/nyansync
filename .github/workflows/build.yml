@@ -60,12 +60,12 @@ jobs:
           args: "--locked --release"
           strip: true
       - name: Upload binary artifact (client)
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}
       - name: Upload binary artifact (server)
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.BINARY_NAME }}-server-${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}-server
@@ -95,12 +95,12 @@ jobs:
           args: "--locked --release"
           strip: true
       - name: Upload binary artifact (client)
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}.exe
       - name: Upload binary artifact (server)
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.BINARY_NAME }}-server-${{ matrix.platform.target }}
           path: target/${{ matrix.platform.target }}/release/${{ env.BINARY_NAME }}-server.exe
