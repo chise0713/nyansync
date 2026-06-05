@@ -14,7 +14,7 @@ path = "src/bin/server/main.rs"
 [dependencies]
 anyhow = "^1"
 sha1 = "^0.11.0"
-supershorty = "^0.2.4"
+supershorty = "^0.3"
 thiserror = "^2"
 tokio = { version = "^1", features = [
     "fs",

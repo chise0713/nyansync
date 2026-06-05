@@ -8,11 +8,7 @@ use anyhow::Result;
 use tokio::{net::TcpListener, runtime::Runtime, signal};
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{
-    accept::Accept,
-    args::{Args, Parse as _},
-    path_table::PathTable,
-};
+use crate::{accept::Accept, args::Args, path_table::PathTable};
 
 fn main() -> Result<ExitCode> {
     let Args {

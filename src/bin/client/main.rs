@@ -18,10 +18,7 @@ use tokio::{
     task::{JoinSet, LocalSet},
 };
 
-use crate::{
-    args::{Args, Parse as _},
-    connect::Connect,
-};
+use crate::{args::Args, connect::Connect};
 
 fn main() -> Result<ExitCode> {
     let Args {
